@@ -21,7 +21,7 @@ def year_from_date(value):
     return match[0] if match else ""
 
 
-def is_over_85(birth_date, today=None):
+def is_at_least_90(birth_date, today=None):
     today = today or date.today()
     value = birth_date.strip().upper()
     exact_date = re.fullmatch(r"(\d{1,2})\s+([A-Z]{3})\s+(\d{4})", value)
@@ -31,16 +31,16 @@ def is_over_85(birth_date, today=None):
         except ValueError:
             return False
         age = today.year - born.year - ((today.month, today.day) < (born.month, born.day))
-        return age > 85
+        return age >= 90
 
     year_match = re.fullmatch(r"(?:(ABT|EST|CAL|BEF|AFT)\s+)?(\d{3,4})", value)
     if not year_match:
         return False
     qualifier, year_text = year_match.groups()
     year = int(year_text)
-    earliest_possible_cutoff_year = today.year - 86
-    return year < earliest_possible_cutoff_year or (
-        year == earliest_possible_cutoff_year and qualifier == "BEF"
+    cutoff_year = today.year - 90
+    return (year < cutoff_year and not qualifier) or (
+        year <= cutoff_year and qualifier == "BEF"
     )
 
 
@@ -60,21 +60,46 @@ def initials_name(name, surname):
     return " ".join(part for part in (initials, family_name) if part)
 
 
-def ancestor_generations(people, root_name="Nathan Albert Pardo"):
-    people_by_id = {person["id"]: person for person in people}
-    root = next((person for person in people if person["name"] == root_name), None)
-    if not root:
-        return {}
-
-    generations = {root["id"]: 0}
-    pending = [root["id"]]
-    while pending:
-        person_id = pending.pop(0)
-        for parent_id in people_by_id[person_id]["parents"]:
-            if parent_id not in generations and parent_id in people_by_id:
-                generations[parent_id] = generations[person_id] + 1
-                pending.append(parent_id)
-    return generations
+def public_gedcom_text(text, today=None):
+    data = records_from_gedcom(text)
+    private_ids = {
+        person["id"]
+        for person in data["people"]
+        if not person.get("death") and not is_at_least_90(person.get("birth_date", ""), today)
+    }
+    people_by_id = {person["id"]: person for person in data["people"]}
+    private_families = {
+        family["id"]
+        for family in data["families"]
+        if private_ids.intersection(
+            {family["husband"], family["wife"], *family["children"]}
+        )
+    }
+    sanitized = []
+    for record in re.split(r"(?m)^0 ", text):
+        if not record:
+            continue
+        lines = record.splitlines()
+        header = re.match(r"(@[^@]+@)\s+(INDI|FAM|SUBM)\b", lines[0]) if lines else None
+        if header and header[2] == "SUBM":
+            continue
+        if header and header[2] == "INDI" and header[1] in private_ids:
+            person = people_by_id[header[1]]
+            short_name = initials_name(person["name"], person.get("surname", ""))
+            surname = person.get("surname", "")
+            given = short_name[: -len(surname)].strip() if surname and short_name.endswith(surname) else short_name
+            gedcom_name = f"{given} /{surname}/" if surname else given
+            lines = [lines[0], f"1 NAME {gedcom_name}"] + [
+                line for line in lines[1:] if re.match(r"^1 FAM[CS] ", line)
+            ]
+        elif header and header[2] == "FAM" and header[1] in private_families:
+            lines = [lines[0]] + [
+                line for line in lines[1:] if re.match(r"^1 (?:HUSB|WIFE|CHIL) ", line)
+            ]
+        elif lines and lines[0] == "HEAD":
+            lines = [line for line in lines if not re.match(r"^1 SUBM ", line)]
+        sanitized.append("\n".join(lines))
+    return "\n".join(f"0 {record}" for record in sanitized)
 
 
 def records_from_gedcom(text):
@@ -222,21 +247,18 @@ def load_archive():
 
 
 def public_archive_data(data):
-    generations = ancestor_generations(data["people"])
     people = []
     for source_person in data["people"]:
         person = {**source_person, "parents": list(source_person["parents"])}
-        older_than_85 = is_over_85(person.get("birth_date", ""))
-        generation = generations.get(person["id"], 0)
-        publicly_named_generation = generation > 3
-        if older_than_85:
+        age_90_or_older = is_at_least_90(person.get("birth_date", ""))
+        if age_90_or_older:
             person["birth"] = person.get("birth_date", "")
             person["place"] = person.get("birth_place", person.get("place", ""))
         elif not person.get("death"):
-            if person["name"] != "Nathan Albert Pardo" and not publicly_named_generation:
-                person["name"] = initials_name(person["name"], person.get("surname", ""))
+            person["name"] = initials_name(person["name"], person.get("surname", ""))
             person["birth"] = ""
             person["place"] = ""
+            person["roles"] = []
         person.pop("birth_date", None)
         person.pop("birth_place", None)
         people.append(person)

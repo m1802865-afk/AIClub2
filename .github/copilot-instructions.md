@@ -25,7 +25,7 @@ Then open:
 - `http://localhost:4173`
 - `http://localhost:4173/api/family-data`
 
-The local server reads the redacted GEDCOM and returns normalized family data; GEDCOM paths are blocked from HTTP requests. The GitHub Pages workflow reads this already-redacted file and deploys static files plus generated data that retains every person and relationship. Living people through generation 3 are shown by initials except Nathan Albert Pardo; generations after 3 are named publicly. People whose recorded birth date establishes they are older than 85 are shown with full name, birth date, and birthplace. Never include living people's photos in the public export. The Pages artifact does not include the GEDCOM. The browser can also import a GEDCOM file locally without uploading it anywhere.
+The local server reads the redacted GEDCOM and returns normalized family data; GEDCOM paths are blocked from HTTP requests. The GitHub Pages workflow reads this already-redacted file and deploys static files plus generated data that retains every person and relationship. Living people not reliably established as 90 or older are shown by initials and surname; their other personal facts and photos are withheld. People reliably established as 90 or older may be shown with full name, birth date, and birthplace. Never include living people's photos in the public export. The Pages artifact does not include the GEDCOM. The browser can also import a GEDCOM file locally without uploading it anywhere.
 
 ## Build, test, and lint commands
 
@@ -48,7 +48,7 @@ If you change the frontend behavior, verify the static build output and reload t
 - Preserve the privacy-first behavior: never check in an unredacted GEDCOM or expose raw GEDCOM records over HTTP.
 - Keep `server.py` responsible for sanitizing archive data before the browser receives it.
 - Keep the Pages artifact limited to `index.html`, `app.js`, `styles.css`, approved local assets, and generated sanitized data; never copy the GEDCOM into it.
-- Keep every person and relationship in the public export. Abbreviate living names through generation 3 except Nathan Albert Pardo; generation 4 and later are named publicly. Disclose full name, birth date, and birthplace for people older than 85. Never export living people's photos.
+- Keep every person and relationship in the public export. Abbreviate names for living people under 90 or whose age is unknown, and remove their other personal facts; people reliably established as 90 or older may retain full name, birth date, and birthplace. Never export living people's photos.
 - Keep the app static and client-rendered: use existing `renderAll()`, `renderTree()`, `renderSurnames()`, and `renderPeople()` patterns rather than introducing a framework or build pipeline.
 - When working with GEDCOM data, normalize names and family relationships in the same shape used by `app.js` (`people`, `families`, `surnames`, `familyLinks`).
 - Route guard behavior is important: `.ged` and `.git` paths should remain blocked in `server.py`.

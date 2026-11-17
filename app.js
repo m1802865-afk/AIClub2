@@ -32,10 +32,6 @@ const timelineItems = [
   { year: "22 May 1920", title: "Maslaton family listed on La Lorraine", detail: "The S.S. La Lorraine manifest records a 22 May 1920 sailing from Le Havre and lists the Maslaton family under the spelling “Masallor,” including Murad and Sarah.", citations: ["lorraine-manifest"] },
   { year: "29 May 1920", title: "Bibi family passengers listed on La Touraine", detail: "The S.S. La Touraine manifest records a 29 May 1920 sailing from Le Havre and lists Salim, Farideh, Salha, Chafica, Farha, Moussa, and David under the Bibi surname. Family relationships and Moussa’s later name Morris are identified by the archive owner.", citations: ["touraine-1920-manifest"] },
   { year: "1938", title: "Shemuel Eliezer Pardo dies", detail: "A Monastir community history remembers Rabbi Shemuel Eliezer Pardo as a Jerusalem preacher, Hebrew educator, and teacher in the Sephardic Talmud Torah for about 30 years.", citations: ["monastir-pardo"] },
-  { year: "1946", title: "A Brooklyn ketubah", detail: "The marriage record for Eli Safdieh and Esther Maslaton places the family at Ocean Parkway Jewish Center.", citations: ["gedcom"] },
-  { year: "1956", title: "David and Matilda go to Israel", detail: "David Pardo and Matilda Betesh leave Egypt for Israel, while their son Albert Pardo and his wife Arlette take a separate route to America with their children.", citations: ["gedcom"] },
-  { year: "1957", title: "Albert and Arlette reach Paris", detail: "Albert Pardo and Arlette travel to Paris with their children on their way from Egypt to America.", citations: ["family-account"] },
-  { year: "1958", title: "Arrival at Idlewild Airport", detail: "The family account records Albert, Arlette, and their children arriving at then-Idlewild Airport aboard a TWA 707.", citations: ["family-account"] },
 ];
 
 const citationSources = [
@@ -149,7 +145,7 @@ let viewerIndex = 0;
 let activeSurname = "";
 let searchTerm = "";
 let toastTimer;
-const previewRootName = "Nathan Albert Pardo";
+const previewRootName = "N. A. Pardo";
 
 const $ = (selector) => document.querySelector(selector);
 const escapeHtml = (value = "") => String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
@@ -528,6 +524,34 @@ function focusPerson(id) {
   setToast(`${person.name}${person.note ? ` · ${person.note}` : person.place ? ` · ${person.place}` : ""}`);
 }
 
+function isAtLeast90(value, today = new Date()) {
+  const exact = value.trim().toUpperCase().match(/^(\d{1,2}) ([A-Z]{3}) (\d{4})$/);
+  if (exact) {
+    const months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+    const month = months.indexOf(exact[2]);
+    if (month < 0) return false;
+    const age = today.getFullYear() - Number(exact[3]) - ((today.getMonth() < month || (today.getMonth() === month && today.getDate() < Number(exact[1]))) ? 1 : 0);
+    return age >= 90;
+  }
+  const year = value.trim().match(/^(\d{3,4})$/);
+  return Boolean(year && Number(year[1]) < today.getFullYear() - 90);
+}
+
+function initialsName(name, surname) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  let givenNames = parts;
+  let familyName = surname;
+  if (surname && name.toLocaleLowerCase().endsWith(surname.toLocaleLowerCase())) {
+    givenNames = name.slice(0, -surname.length).trim().split(/\s+/).filter(Boolean);
+  } else if (parts.length > 1) {
+    givenNames = parts.slice(0, -1);
+    familyName = parts.at(-1);
+  } else if (parts.length === 1) {
+    return `${parts[0][0].toUpperCase()}.`;
+  }
+  return [...givenNames.map((part) => `${part[0].toUpperCase()}.`), familyName].filter(Boolean).join(" ");
+}
+
 function parseGedcom(text) {
   const records = text.split(/^0 /m).slice(1);
   const individuals = [];
@@ -586,11 +610,20 @@ function parseGedcom(text) {
       return family ? [family.husband, family.wife].filter((parentId) => byId.has(parentId)) : [];
     });
     person.parents = [...new Set([...recordedParents, ...(parentsByChild.get(person.id) || [])])];
+    const privateLivingPerson = !person.deceased && !isAtLeast90(person.birth);
     person.birth = person.birth.replace(/^(?:ABT|BET|BEF|AFT)\s+/i, "");
     person.birth = person.birth.match(/\d{3,4}/)?.[0] || "";
     person.death = person.death.match(/\d{3,4}/)?.[0] || "";
     person.roles = [...new Set(person.roles.filter(Boolean))];
     person.photos = person.deceased && person.death ? person.photos.map((photo) => typeof photo === "string" ? { url: photo, caption: "" } : photo).filter((photo) => /\.(?:jpe?g|png|webp)(?:[?#]|$)/i.test(photo.url)) : [];
+    if (privateLivingPerson) {
+      person.name = initialsName(person.name, person.surname);
+      person.given = "";
+      person.birth = "";
+      person.place = "";
+      person.roles = [];
+      person.photos = [];
+    }
   }
   const photos = individuals.flatMap((person) => person.photos.map((photo) => ({ ...photo, personId: person.id, name: person.name })));
   const surnameMap = new Map();

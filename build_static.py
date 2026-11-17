@@ -34,30 +34,6 @@ def public_app_source(archive):
         "\n\nconst timelineItems = [",
         "const surnameRecords = [];",
     )
-    start_marker = "const timelineItems = ["
-    end_marker = "\n];\n\nconst citationSources = ["
-    start = source.find(start_marker)
-    end = source.find(end_marker, start + len(start_marker))
-    if start < 0 or end < 0:
-        raise ValueError("Could not safely identify timeline data in app.js.")
-    timeline = source[start:end]
-    timeline = "\n".join(
-        line
-        for line in timeline.splitlines()
-        if not (match := re.match(r'\s*\{ year: "(\d{4})"', line))
-        or int(match.group(1)) < 1956
-    )
-    source = source[:start] + timeline + source[end:]
-    public_names = {person["id"]: person["name"] for person in public_archive_data(archive)["people"]}
-    for person in archive["people"]:
-        display_name = public_names[person["id"]]
-        if display_name == person["name"]:
-            continue
-        source = re.sub(
-            rf"(?<![\w]){re.escape(person['name'])}(?![\w])",
-            lambda _: display_name,
-            source,
-        )
     embedded_data = json.dumps(
         public_archive_data(archive),
         ensure_ascii=False,
